@@ -2,6 +2,8 @@ package com.mayeoinbread.mayeosglyphtoys
 
 import android.content.ComponentName
 import android.content.Context
+import android.content.pm.PackageManager
+import android.graphics.drawable.Drawable
 import android.media.MediaMetadata
 import android.media.session.MediaController
 import android.media.session.MediaSessionManager
@@ -28,7 +30,8 @@ class NowPlayingGlyphService : GlyphMatrixService("NowPlaying-Glyph") {
     private var mediaControllerCallback: MediaController.Callback? = null
 
     private val matrix = IntArray(DrawUtils.SCREEN_LENGTH * DrawUtils.SCREEN_LENGTH)
-
+    
+    // List of backup logos in case we can't get the logo from the app (eg. YouTube)
     private val appLogo = mapOf(
         "com.amazon.mp3" to R.drawable.amazon_music_logo,
         "com.apple.android.music" to R.drawable.apple_music_logo,
@@ -149,24 +152,27 @@ class NowPlayingGlyphService : GlyphMatrixService("NowPlaying-Glyph") {
 
             val tMatrix = IntArray(DrawUtils.SCREEN_LENGTH * DrawUtils.SCREEN_LENGTH)
 
-            val appLogoDrawableRes = appLogo[currentSource]
-
-            val logoFrame = if (appLogoDrawableRes != null) {
-                val drawable = try {
-                    resources.getDrawable(appLogoDrawableRes, null)
-                } catch (e: Exception) {
-                    null
+            var appLogoDrawable = getAppIcon(applicationContext, currentSource)
+            // Use the backup if we can't get the app icon
+            if (appLogoDrawable == null) {
+                val appLogoDrawableRes = appLogo[currentSource]
+                if (appLogoDrawableRes != null) {
+                    appLogoDrawable = try {
+                        resources.getDrawable(appLogoDrawableRes, null)
+                    } catch (e: Exception) {
+                        null
+                    }
                 }
+            }
 
-                drawable?.let {
-                    GlyphMatrixObject.Builder()
-                        .setImageSource(GlyphMatrixUtils.drawableToBitmap(it))
-                        .setScale(100)
-                        .setOrientation(0)
-                        .setPosition(0, 0)
-                        .setBrightness(32)
-                        .build()
-                }
+            val logoFrame = if (appLogoDrawable != null) {
+                GlyphMatrixObject.Builder()
+                    .setImageSource(GlyphMatrixUtils.drawableToBitmap(appLogoDrawable))
+                    .setScale(100)
+                    .setOrientation(0)
+                    .setPosition(0, 0)
+                    .setBrightness(24)
+                    .build()
             } else {
                 val parts = currentSource.split(".")
                 val fallbackChar = when {
@@ -198,5 +204,14 @@ class NowPlayingGlyphService : GlyphMatrixService("NowPlaying-Glyph") {
         val frame = frameBuilder.build(applicationContext)
 
         glyphMatrixManager?.setMatrixFrame(frame.render())
+    }
+
+    private fun getAppIcon(context: Context, packageName: String): Drawable? {
+        return try {
+            val pm = context.packageManager
+            pm.getApplicationIcon(packageName)
+        } catch (e: PackageManager.NameNotFoundException) {
+            null
+        }
     }
 }
